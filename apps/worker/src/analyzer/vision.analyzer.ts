@@ -108,9 +108,20 @@ TASKS:
     const parts: any[] = [];
     for (const url of urls) {
       try {
-        const res = await fetch(url, { headers: { "User-Agent": "Mozilla/5.0" } });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 6000); // 6s timeout per image
+
+        const res = await fetch(url, {
+          signal: controller.signal,
+          headers: { "User-Agent": "Mozilla/5.0" },
+        });
+        clearTimeout(timeout);
+
         if (res.ok) {
           const buffer = await res.arrayBuffer();
+          // Skip oversized images (> 5MB)
+          if (buffer.byteLength > 5 * 1024 * 1024) continue;
+
           const base64 = Buffer.from(buffer).toString("base64");
           const mimeType = res.headers.get("content-type") || "image/jpeg";
           parts.push({
@@ -120,8 +131,8 @@ TASKS:
             },
           });
         }
-      } catch (e) {
-        // Skip unreadable images
+      } catch {
+        // Skip unreadable, timed out, or inaccessible images
       }
     }
     return parts;
