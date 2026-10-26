@@ -2,6 +2,7 @@ import { test, describe } from "node:test";
 import assert from "node:assert/strict";
 import { HeuristicFilter } from "../analyzer/heuristic.filter.js";
 import { DealRanker } from "../ranking/deal.ranker.js";
+import { PlaywrightMarketplaceScraper } from "./playwright.scraper.js";
 
 describe("HeuristicFilter", () => {
   test("discards buyer intent posts", () => {
@@ -43,6 +44,30 @@ describe("HeuristicFilter", () => {
     };
     const res = HeuristicFilter.evaluate(post, { minPrice: 2000, maxPrice: 6000 });
     assert.equal(res.pass, true);
+  });
+});
+
+describe("Checkpoint Detection", () => {
+  test("flags login and checkpoint URLs correctly", async () => {
+    const scraper = new PlaywrightMarketplaceScraper();
+    
+    // Mock page with checkpoint URL
+    const mockCheckpointPage = {
+      url: () => "https://www.facebook.com/checkpoint/123456789/",
+      $: async () => null,
+    } as any;
+
+    const isBlocked = await scraper.detectCheckpoint(mockCheckpointPage);
+    assert.equal(isBlocked, true);
+
+    // Mock normal marketplace page
+    const mockCleanPage = {
+      url: () => "https://www.facebook.com/marketplace/lapaz/search?query=laptop",
+      $: async () => null,
+    } as any;
+
+    const isClean = await scraper.detectCheckpoint(mockCleanPage);
+    assert.equal(isClean, false);
   });
 });
 

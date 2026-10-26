@@ -74,9 +74,10 @@ export class PlaywrightMarketplaceScraper {
       await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: 30000 });
 
       // Check for login wall or checkpoint
-      const content = await page.content();
-      if (content.includes("checkpoint") || content.includes("login_form")) {
-        console.warn("[Scraper] Warning: Facebook requested login or checkpoint.");
+      const isBlocked = await this.detectCheckpoint(page);
+      if (isBlocked) {
+        console.warn("⚠️ [Scraper] Facebook requested login checkpoint or captcha. Run 'pnpm dev:login' to update session cookies.");
+        return [];
       }
 
       // Smooth human scroll to load infinite scroll items with randomized jitter
@@ -167,6 +168,65 @@ export class PlaywrightMarketplaceScraper {
     }
 
     return listings;
+  }
+
+  async detectCheckpoint(page: Page): Promise<boolean> {
+    const url = page.url();
+    if (url.includes("/checkpoint/") || url.includes("/login/") || url.includes("login_form")) {
+      return true;
+    }
+
+    try {
+      const checkpointEl = await page.$("form[action*='checkpoint'], #checkpointSubmitButton, input[name='captcha_response']");
+      if (checkpointEl) return true;
+    } catch {
+      // Ignore selector errors
+    }
+
+    return false;
+  }
+
+  /**
+   * Opens an interactive browser for the user to log in manually and dump cookies.
+   */
+  async saveSessionInteractive(timeoutMs: number = 120000): Promise<boolean> {
+    console.log("🌐 Opening interactive browser window for manual Facebook login...");
+    const headfulBrowser = await chromium.launch({
+      headless: false,
+      args: ["--no-sandbox", "--disable-infobars"],
+    });
+
+    const context = await headfulBrowser.newContext({
+      viewport: { width: 1280, height: 900 },
+      locale: "es-BO",
+    });
+
+    const page = await context.newPage();
+    await page.goto("https://www.facebook.com/marketplace", { waitUntil: "domcontentloaded" });
+
+    console.log("👉 Please log in to Facebook in the opened browser window.");
+    console.log("   The session will automatically be saved once you are on Marketplace.");
+
+    const startTime = Date.now();
+    let loggedIn = false;
+
+    while (Date.now() - startTime < timeoutMs) {
+      const currentUrl = page.url();
+      if (currentUrl.includes("/marketplace") && !currentUrl.includes("/login") && !currentUrl.includes("/checkpoint")) {
+        // Give 2 seconds for cookies to settle
+        await page.waitForTimeout(2000);
+        const cookies = await context.cookies();
+        await fs.mkdir(path.dirname(this.cookiePath), { recursive: true });
+        await fs.writeFile(this.cookiePath, JSON.stringify(cookies, null, 2));
+        console.log(`✅ Success! Saved ${cookies.length} session cookies to ${this.cookiePath}`);
+        loggedIn = true;
+        break;
+      }
+      await page.waitForTimeout(1500);
+    }
+
+    await headfulBrowser.close();
+    return loggedIn;
   }
 
   async saveCookies(): Promise<void> {
