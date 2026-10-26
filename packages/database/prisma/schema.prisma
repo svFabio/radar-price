@@ -1,0 +1,107 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum ListingStatus {
+  PENDING
+  HEURISTIC_REJECTED
+  EVALUATED
+  ALERTED
+  IGNORED
+}
+
+model SearchTarget {
+  id              String    @id @default(uuid())
+  name            String
+  query           String
+  category        String?
+  minPrice        Float?
+  maxPrice        Float?
+  currency        String    @default("BOB")
+  location        String    @default("La Paz, Bolivia")
+  latitude        Float?
+  longitude       Float?
+  radiusKm        Int       @default(20)
+  keywordsInclude String[]  @default([])
+  keywordsExclude String[]  @default([])
+  active          Boolean   @default(true)
+  intervalMinutes Int       @default(60)
+  lastRunAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  listings        Listing[]
+
+  @@map("search_targets")
+}
+
+model Listing {
+  id               String        @id @default(uuid())
+  searchTargetId   String
+  fbItemId         String        @unique
+  title            String
+  listedPrice      Float?
+  currency         String        @default("BOB")
+  sellerName       String?
+  location         String?
+  url              String
+  imageUrls        String[]      @default([])
+  primaryImageHash String?
+  rawDescription   String?
+  status           ListingStatus @default(PENDING)
+  scrapedAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  searchTarget     SearchTarget  @relation(fields: [searchTargetId], references: [id], onDelete: Cascade)
+  evaluation       Evaluation?
+  alerts           Alert[]
+
+  @@index([searchTargetId])
+  @@index([status])
+  @@index([primaryImageHash])
+  @@map("listings")
+}
+
+model Evaluation {
+  id                   String   @id @default(uuid())
+  listingId            String   @unique
+  brand                String?
+  model                String?
+  cpu                  String?
+  ramGb                Int?
+  storageGb            Int?
+  gpu                  String?
+  realPrice            Float?
+  conditionRating      Int?
+  isDeal               Boolean  @default(false)
+  dealScore            Float    @default(0)
+  estimatedMarketPrice Float?
+  reasoning            String?
+  rawAiResponse        Json?
+  evaluatedAt          DateTime @default(now())
+
+  listing              Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([isDeal])
+  @@index([dealScore])
+  @@map("evaluations")
+}
+
+model Alert {
+  id        String   @id @default(uuid())
+  listingId String
+  channel   String
+  status    String   @default("sent")
+  sentAt    DateTime @default(now())
+  metadata  Json?
+
+  listing   Listing  @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("alerts")
+}
