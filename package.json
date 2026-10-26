@@ -5,6 +5,7 @@
   "description": "Intelligent deal monitoring and arbitrage engine for Facebook Marketplace",
   "scripts": {
     "build": "pnpm -r run build",
+    "test": "pnpm --filter @radar/worker test",
     "dev:worker": "pnpm --filter @radar/worker dev",
     "dev:api": "pnpm --filter @radar/api dev",
     "prisma:generate": "pnpm --filter @radar/database prisma:generate",

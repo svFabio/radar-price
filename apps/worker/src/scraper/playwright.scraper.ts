@@ -9,6 +9,9 @@ export interface ScraperSearchOptions {
   minPrice?: number | null;
   maxPrice?: number | null;
   limit?: number;
+  maxScrolls?: number;
+  minScrollDelayMs?: number;
+  maxScrollDelayMs?: number;
 }
 
 export class PlaywrightMarketplaceScraper {
@@ -76,10 +79,25 @@ export class PlaywrightMarketplaceScraper {
         console.warn("[Scraper] Warning: Facebook requested login or checkpoint.");
       }
 
-      // Smooth human scroll to load infinite scroll items
-      for (let i = 0; i < 3; i++) {
-        await page.mouse.wheel(0, 1000);
-        await page.waitForTimeout(1500 + Math.random() * 1000);
+      // Smooth human scroll to load infinite scroll items with randomized jitter
+      const maxScrolls = options.maxScrolls ?? 5;
+      const minDelay = options.minScrollDelayMs ?? 1500;
+      const maxDelay = options.maxScrollDelayMs ?? 3000;
+
+      for (let i = 0; i < maxScrolls; i++) {
+        // Vary scroll distance and add micro-movements
+        const scrollAmount = 800 + Math.floor(Math.random() * 400);
+        await page.mouse.wheel(0, scrollAmount);
+        
+        // Random human delay between minDelay and maxDelay
+        const jitter = minDelay + Math.random() * (maxDelay - minDelay);
+        await page.waitForTimeout(jitter);
+
+        // Check if we already have enough items
+        const currentItems = await page.$$("a[href*='/marketplace/item/']");
+        if (options.limit && currentItems.length >= options.limit * 1.5) {
+          break;
+        }
       }
 
       // Parse marketplace items
@@ -104,7 +122,18 @@ export class PlaywrightMarketplaceScraper {
         // Extract title, price and image
         const textContent = (await el.innerText()).split("\n").filter(Boolean);
         const imgEl = await el.$("img");
-        const imgSrc = imgEl ? (await imgEl.getAttribute("src")) || "" : "";
+        let imgSrc = "";
+        if (imgEl) {
+          imgSrc = (await imgEl.getAttribute("src")) || "";
+          if (!imgSrc || imgSrc.startsWith("data:")) {
+            const srcset = await imgEl.getAttribute("srcset");
+            if (srcset) {
+              const parts = srcset.split(",");
+              const last = parts[parts.length - 1]?.trim().split(" ")[0];
+              if (last) imgSrc = last;
+            }
+          }
+        }
 
         // Facebook usually renders: [Price, Title, Location]
         let priceNumber: number | null = null;
@@ -128,7 +157,7 @@ export class PlaywrightMarketplaceScraper {
           currency: "BOB",
           url: fullUrl,
           imageUrls: imgSrc ? [imgSrc] : [],
-          location: "La Paz, Bolivia",
+          location: options.city || "La Paz, Bolivia",
         });
       }
     } catch (error) {
