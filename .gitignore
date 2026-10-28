@@ -7,3 +7,4 @@ dist/
 storage/
 cookies/
 *.session.json
+.scrum/
