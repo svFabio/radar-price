@@ -1,1 +1,1 @@
-{"root":["./src/App.tsx","./src/main.tsx"],"version":"5.9.3"}
+{"root":["./src/App.tsx","./src/main.tsx","./src/types.ts","./src/components/DealCard.tsx","./src/components/DealFilters.tsx","./src/components/DealStats.tsx","./src/components/NewTargetModal.tsx","./src/components/TargetCard.tsx","./src/utils/formatters.ts"],"version":"5.9.3"}
