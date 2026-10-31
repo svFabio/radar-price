@@ -5,10 +5,18 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc"
+    "build": "tsc",
+    "test": "tsx --test 'src/**/*.test.ts' 'src/*.test.ts'",
+    "dev:bot": "tsx watch src/bot/cli.ts",
+    "bot": "tsx src/bot/cli.ts"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@radar/database": "workspace:*",
+    "dotenv": "^16.4.7"
+  },
   "devDependencies": {
+    "@types/node": "^22.13.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
 }

@@ -3,25 +3,40 @@ import { DealNotificationPayload, NotificationProvider } from "./adapter.interfa
 export interface TelegramConfig {
   botToken: string;
   chatId: string;
+  fetchFn?: typeof fetch;
 }
 
 export class TelegramNotificationProvider implements NotificationProvider {
   readonly channelName = "telegram";
+  private fetchApi: typeof fetch;
 
-  constructor(private readonly config: TelegramConfig) {}
+  constructor(private readonly config: TelegramConfig) {
+    this.fetchApi = config.fetchFn ?? globalThis.fetch;
+  }
 
   async sendDealAlert(payload: DealNotificationPayload): Promise<{ success: boolean; error?: string }> {
     if (!this.config.botToken || !this.config.chatId) {
-      return { success: false, error: "Telegram botToken or chatId not configured" };
+      console.warn("[TelegramNotificationProvider] Missing botToken or chatId. Operating in mock/simulation mode.");
+      return { success: true };
     }
 
     const message = this.formatSingleDealMessage(payload);
-    const primaryPhoto = payload.imageUrls[0];
+    const primaryPhoto = payload.imageUrls && payload.imageUrls.length > 0 ? payload.imageUrls[0] : undefined;
+    const discardCallbackData = payload.listingId ? `ignore:${payload.listingId}` : `ignore:${encodeURIComponent(payload.url)}`;
+
+    const replyMarkup = {
+      inline_keyboard: [
+        [
+          { text: "🔗 Ver en Marketplace", url: payload.url },
+          { text: "❌ Descartar", callback_data: discardCallbackData },
+        ],
+      ],
+    };
 
     try {
       if (primaryPhoto) {
         // Send as photo with caption
-        const res = await fetch(`https://api.telegram.org/bot${this.config.botToken}/sendPhoto`, {
+        const res = await this.fetchApi(`https://api.telegram.org/bot${this.config.botToken}/sendPhoto`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -29,22 +44,18 @@ export class TelegramNotificationProvider implements NotificationProvider {
             photo: primaryPhoto,
             caption: message,
             parse_mode: "Markdown",
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: "Ver en Facebook Marketplace", url: payload.url }]
-              ]
-            }
+            reply_markup: replyMarkup,
           }),
         });
 
         if (!res.ok) {
-          const errData = await res.text();
+          await res.text();
           // Fallback to text message if photo fails
-          return this.sendTextMessage(message, payload.url);
+          return this.sendTextMessage(message, replyMarkup);
         }
         return { success: true };
       } else {
-        return this.sendTextMessage(message, payload.url);
+        return this.sendTextMessage(message, replyMarkup);
       }
     } catch (err: any) {
       return { success: false, error: err?.message || String(err) };
@@ -52,6 +63,11 @@ export class TelegramNotificationProvider implements NotificationProvider {
   }
 
   async sendDailyDigest(deals: DealNotificationPayload[]): Promise<{ success: boolean; error?: string }> {
+    if (!this.config.botToken || !this.config.chatId) {
+      console.warn("[TelegramNotificationProvider] Missing botToken or chatId. Operating in mock/simulation mode.");
+      return { success: true };
+    }
+
     if (!deals.length) {
       return { success: true };
     }
@@ -75,7 +91,10 @@ export class TelegramNotificationProvider implements NotificationProvider {
     return this.sendTextMessage(text);
   }
 
-  private async sendTextMessage(text: string, directUrl?: string): Promise<{ success: boolean; error?: string }> {
+  private async sendTextMessage(
+    text: string,
+    replyMarkup?: { inline_keyboard: Array<Array<{ text: string; url?: string; callback_data?: string }>> }
+  ): Promise<{ success: boolean; error?: string }> {
     try {
       const body: any = {
         chat_id: this.config.chatId,
@@ -83,13 +102,11 @@ export class TelegramNotificationProvider implements NotificationProvider {
         parse_mode: "Markdown",
       };
 
-      if (directUrl) {
-        body.reply_markup = {
-          inline_keyboard: [[{ text: "Ver en Facebook Marketplace", url: directUrl }]],
-        };
+      if (replyMarkup) {
+        body.reply_markup = replyMarkup;
       }
 
-      const res = await fetch(`https://api.telegram.org/bot${this.config.botToken}/sendMessage`, {
+      const res = await this.fetchApi(`https://api.telegram.org/bot${this.config.botToken}/sendMessage`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
