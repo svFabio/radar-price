@@ -633,4 +633,72 @@ describe("WorkerPipeline - Arbitrator Requirements (US-5.1)", () => {
       assert.equal(summary.dispatchedAlertsCount, 1);
     });
   });
+
+  describe("5. On-Demand runTarget Execution", () => {
+    test("runTarget initializes scraper, processes single target by ID, and cleanly closes scraper", async () => {
+      let initCalled = false;
+      let closeCalled = false;
+
+      const mockTarget = {
+        id: "target-ondemand",
+        name: "Thinkpads",
+        query: "thinkpad",
+        location: "La Paz",
+        minPrice: 1000,
+        maxPrice: 3000,
+        currency: "BOB",
+        keywordsInclude: [],
+        keywordsExclude: [],
+        active: true,
+      };
+
+      const mockPrisma = {
+        searchTarget: {
+          findUnique: async ({ where }: any) => {
+            if (where.id === "target-ondemand") return mockTarget;
+            return null;
+          },
+          update: async () => mockTarget,
+        },
+      };
+
+      const mockScraper = {
+        init: async () => {
+          initCalled = true;
+        },
+        scrapeSearch: async () => [],
+        close: async () => {
+          closeCalled = true;
+        },
+      };
+
+      const pipeline = new WorkerPipeline({
+        prisma: mockPrisma,
+        scraper: mockScraper,
+      });
+
+      const summary = await pipeline.runTarget("target-ondemand");
+
+      assert.equal(initCalled, true, "Scraper must be initialized");
+      assert.equal(closeCalled, true, "Scraper must be closed in finally");
+      assert.equal(summary.rawCount, 0);
+    });
+
+    test("runTarget throws when target ID is not found", async () => {
+      const mockPrisma = {
+        searchTarget: {
+          findUnique: async () => null,
+        },
+      };
+
+      const pipeline = new WorkerPipeline({ prisma: mockPrisma });
+
+      await assert.rejects(
+        async () => {
+          await pipeline.runTarget("unknown-id");
+        },
+        { message: "Target not found: unknown-id" }
+      );
+    });
+  });
 });
