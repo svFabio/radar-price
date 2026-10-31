@@ -18,6 +18,7 @@ export interface DealNotificationPayload {
   url: string;
   imageUrls: string[];
   location?: string | null;
+  listingId?: string | null;
 }
 
 export interface NotificationProvider {
