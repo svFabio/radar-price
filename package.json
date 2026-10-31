@@ -7,7 +7,7 @@
     "build": "pnpm -r run build",
     "typecheck": "pnpm -r run build",
     "lint": "echo 'Linting passed: no issues'",
-    "test": "pnpm --filter @radar/worker test",
+    "test": "pnpm --filter @radar/worker test && pnpm --filter @radar/api test",
     "dev:worker": "pnpm --filter @radar/worker dev",
     "dev:scheduler": "pnpm --filter @radar/worker dev:scheduler",
     "dev:login": "pnpm --filter @radar/worker login",
