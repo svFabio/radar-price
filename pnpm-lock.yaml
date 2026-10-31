@@ -23,6 +23,9 @@ importers:
       '@radar/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
+      '@radar/worker':
+        specifier: workspace:*
+        version: link:../worker
       dotenv:
         specifier: ^16.4.7
         version: 16.6.1
