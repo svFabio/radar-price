@@ -40,6 +40,28 @@ importers:
         specifier: ^5.7.3
         version: 5.9.3
 
+  apps/bot:
+    dependencies:
+      '@radar/database':
+        specifier: workspace:*
+        version: link:../../packages/database
+      '@radar/notifications':
+        specifier: workspace:*
+        version: link:../../packages/notifications
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
+    devDependencies:
+      '@types/node':
+        specifier: ^22.13.1
+        version: 22.20.5
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+
   apps/web:
     dependencies:
       lucide-react:
@@ -125,7 +147,20 @@ importers:
         version: 5.9.3
 
   packages/notifications:
+    dependencies:
+      '@radar/database':
+        specifier: workspace:*
+        version: link:../database
+      dotenv:
+        specifier: ^16.4.7
+        version: 16.6.1
     devDependencies:
+      '@types/node':
+        specifier: ^22.13.1
+        version: 22.20.5
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.15
       typescript:
         specifier: ^5.7.3
         version: 5.9.3
