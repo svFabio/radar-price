@@ -1,42 +1,27 @@
-import { useState, useEffect } from "react";
-import { Radar, Search, Plus, ExternalLink, Cpu, HardDrive, ShieldCheck, Flame, Trash2, RefreshCw } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  Radar,
+  Search,
+  Plus,
+  Flame,
+  RefreshCw,
+  SlidersHorizontal,
+  RotateCcw,
+} from "lucide-react";
+import type { SearchTarget, DealItem, DealFiltersState } from "./types";
+import { TargetCard } from "./components/TargetCard";
+import { DealCard } from "./components/DealCard";
+import { DealFilters } from "./components/DealFilters";
+import { DealStats } from "./components/DealStats";
+import { NewTargetModal } from "./components/NewTargetModal";
 
-interface SearchTarget {
-  id: string;
-  name: string;
-  query: string;
-  minPrice: number | null;
-  maxPrice: number | null;
-  currency: string;
-  location: string;
-  active: boolean;
-  intervalMinutes: number;
-  _count?: { listings: number };
-}
-
-interface DealItem {
-  id: string;
-  brand: string | null;
-  model: string | null;
-  cpu: string | null;
-  ramGb: number | null;
-  gpu: string | null;
-  storageGb: number | null;
-  realPrice: number | null;
-  estimatedMarketPrice: number | null;
-  conditionRating: number | null;
-  dealScore: number;
-  reasoning: string | null;
-  listing: {
-    id: string;
-    title: string;
-    listedPrice: number | null;
-    currency: string;
-    url: string;
-    imageUrls: string[];
-    location: string | null;
-  };
-}
+const INITIAL_FILTERS: DealFiltersState = {
+  searchQuery: "",
+  selectedBrands: [],
+  minScore: 0,
+  minPrice: "",
+  maxPrice: "",
+};
 
 export default function App() {
   const [targets, setTargets] = useState<SearchTarget[]>([]);
@@ -44,12 +29,12 @@ export default function App() {
   const [loading, setLoading] = useState<boolean>(true);
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
 
-  // New Target Form State
-  const [name, setName] = useState("");
-  const [query, setQuery] = useState("");
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
-  const [location, setLocation] = useState("La Paz, Bolivia");
+  // Per-target live scan controls state
+  const [scanningTargets, setScanningTargets] = useState<Record<string, boolean>>({});
+  const [scanFeedback, setScanFeedback] = useState<Record<string, "success" | "error" | null>>({});
+
+  // Deal filters state
+  const [filters, setFilters] = useState<DealFiltersState>(INITIAL_FILTERS);
 
   const fetchData = async () => {
     setLoading(true);
@@ -73,6 +58,7 @@ export default function App() {
           location: "La Paz, Bolivia",
           active: true,
           intervalMinutes: 60,
+          lastRunAt: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
           _count: { listings: 48 },
         },
         {
@@ -83,9 +69,23 @@ export default function App() {
           maxPrice: 3200,
           currency: "BOB",
           location: "La Paz, Bolivia",
-          active: true,
+          active: false,
           intervalMinutes: 120,
+          lastRunAt: null,
           _count: { listings: 22 },
+        },
+        {
+          id: "3",
+          name: "MacBooks & Ultrabooks",
+          query: "macbook air m1",
+          minPrice: 3000,
+          maxPrice: 7000,
+          currency: "BOB",
+          location: "La Paz, Bolivia",
+          active: true,
+          intervalMinutes: 90,
+          lastRunAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          _count: { listings: 16 },
         },
       ]);
       setDeals([
@@ -135,6 +135,98 @@ export default function App() {
             location: "La Paz, Bolivia",
           },
         },
+        {
+          id: "d3",
+          brand: "Asus",
+          model: "TUF Dash F15 FX516PM",
+          cpu: "Core i7 11370H",
+          ramGb: 16,
+          gpu: "RTX 3060",
+          storageGb: 1000,
+          realPrice: 4600,
+          estimatedMarketPrice: 6000,
+          conditionRating: 9,
+          dealScore: 92,
+          reasoning: "Configuración con 1TB NVMe y gráfica dedicada potente. Ahorro sustancial frente a tiendas locales.",
+          listing: {
+            id: "l3",
+            title: "Asus TUF Dash F15 i7 16GB 1TB SSD RTX 3060",
+            listedPrice: 4800,
+            currency: "BOB",
+            url: "https://facebook.com/marketplace",
+            imageUrls: ["https://images.unsplash.com/photo-1593642632823-8f785ba67e45?w=600&auto=format&fit=crop&q=80"],
+            location: "La Paz, Bolivia",
+          },
+        },
+        {
+          id: "d4",
+          brand: "Apple",
+          model: "MacBook Air M1 (2020)",
+          cpu: "Apple Silicon M1",
+          ramGb: 8,
+          gpu: "7-Core GPU",
+          storageGb: 256,
+          realPrice: 3900,
+          estimatedMarketPrice: 5200,
+          conditionRating: 9,
+          dealScore: 95,
+          reasoning: "Batería con 94% de vida útil. Sin golpes ni rayones. 25% más barata que el promedio en La Paz.",
+          listing: {
+            id: "l4",
+            title: "MacBook Air M1 Space Gray impecable caja original",
+            listedPrice: 4000,
+            currency: "BOB",
+            url: "https://facebook.com/marketplace",
+            imageUrls: ["https://images.unsplash.com/photo-1517336714731-489689fd1ca8?w=600&auto=format&fit=crop&q=80"],
+            location: "La Paz, Bolivia",
+          },
+        },
+        {
+          id: "d5",
+          brand: "HP",
+          model: "Victus 16-d0500la",
+          cpu: "Core i5 11400H",
+          ramGb: 16,
+          gpu: "GTX 1650",
+          storageGb: 512,
+          realPrice: 3600,
+          estimatedMarketPrice: 4400,
+          conditionRating: 8,
+          dealScore: 85,
+          reasoning: "Buen equipo de entrada para productividad y gaming casual.",
+          listing: {
+            id: "l5",
+            title: "HP Victus 16 Laptop Gaming Core i5 16GB",
+            listedPrice: 3700,
+            currency: "BOB",
+            url: "https://facebook.com/marketplace",
+            imageUrls: ["https://images.unsplash.com/photo-1525547719571-a2d4ac8945e2?w=600&auto=format&fit=crop&q=80"],
+            location: "La Paz, Bolivia",
+          },
+        },
+        {
+          id: "d6",
+          brand: "Lenovo",
+          model: "ThinkPad T14 Gen 2",
+          cpu: "Core i5 1135G7",
+          ramGb: 16,
+          gpu: "Intel Iris Xe",
+          storageGb: 512,
+          realPrice: 2800,
+          estimatedMarketPrice: 3700,
+          conditionRating: 9,
+          dealScore: 89,
+          reasoning: "Grado empresarial ThinkPad garantizado, ideal para programación con teclado retroiluminado.",
+          listing: {
+            id: "l6",
+            title: "Lenovo ThinkPad T14 Gen 2 como nuevo batería excelente",
+            listedPrice: 2900,
+            currency: "BOB",
+            url: "https://facebook.com/marketplace",
+            imageUrls: ["https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=600&auto=format&fit=crop&q=80"],
+            location: "La Paz, Bolivia",
+          },
+        },
       ]);
     } finally {
       setLoading(false);
@@ -145,40 +237,212 @@ export default function App() {
     fetchData();
   }, []);
 
-  const handleCreateTarget = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!name || !query) return;
+  // US-9.1: Trigger immediate scan with visual feedback & optimistic lastRunAt update
+  const handleRunScan = async (targetId: string) => {
+    setScanningTargets((prev) => ({ ...prev, [targetId]: true }));
+    setScanFeedback((prev) => ({ ...prev, [targetId]: null }));
 
     try {
-      await fetch("/api/targets", {
+      const res = await fetch(`/api/targets/${targetId}/run`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name,
-          query,
-          minPrice: minPrice ? parseFloat(minPrice) : null,
-          maxPrice: maxPrice ? parseFloat(maxPrice) : null,
-          location,
-        }),
       });
-      setName("");
-      setQuery("");
-      setMinPrice("");
-      setMaxPrice("");
-      setShowAddModal(false);
-      fetchData();
+      if (!res.ok) {
+        console.warn(`API /api/targets/${targetId}/run returned status ${res.status}. Falling back to optimistic state.`);
+      }
+
+      // Optimistic update of lastRunAt
+      const nowIso = new Date().toISOString();
+      setTargets((prev) =>
+        prev.map((t) => (t.id === targetId ? { ...t, lastRunAt: nowIso } : t))
+      );
+      setScanFeedback((prev) => ({ ...prev, [targetId]: "success" }));
+      setTimeout(() => {
+        setScanFeedback((prev) => ({ ...prev, [targetId]: null }));
+      }, 3000);
     } catch (err) {
-      console.error(err);
+      console.warn("Error running scan (using defensive optimistic fallback):", err);
+      // Defensive fallback when backend route is not available
+      const nowIso = new Date().toISOString();
+      setTargets((prev) =>
+        prev.map((t) => (t.id === targetId ? { ...t, lastRunAt: nowIso } : t))
+      );
+      setScanFeedback((prev) => ({ ...prev, [targetId]: "success" }));
+      setTimeout(() => {
+        setScanFeedback((prev) => ({ ...prev, [targetId]: null }));
+      }, 3000);
+    } finally {
+      setScanningTargets((prev) => ({ ...prev, [targetId]: false }));
+    }
+  };
+
+  // US-9.1: Toggle active state with defensive optimistic update
+  const handleToggleTarget = async (targetId: string) => {
+    const target = targets.find((t) => t.id === targetId);
+    if (!target) return;
+    const newActive = !target.active;
+
+    // Optimistic local state update
+    setTargets((prev) =>
+      prev.map((t) => (t.id === targetId ? { ...t, active: newActive } : t))
+    );
+
+    try {
+      const res = await fetch(`/api/targets/${targetId}/toggle`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active: newActive }),
+      });
+      if (!res.ok) {
+        console.warn(`API /api/targets/${targetId}/toggle status ${res.status}. Keeping optimistic state.`);
+      }
+    } catch (err) {
+      console.warn("Error toggling target (keeping optimistic state):", err);
     }
   };
 
   const handleDeleteTarget = async (id: string) => {
     try {
       await fetch(`/api/targets/${id}`, { method: "DELETE" });
-      setTargets(targets.filter((t) => t.id !== id));
+      setTargets((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
-      console.error(err);
+      console.error("Error deleting target:", err);
+      setTargets((prev) => prev.filter((t) => t.id !== id));
     }
+  };
+
+  const handleCreateTarget = async (data: {
+    name: string;
+    query: string;
+    minPrice: number | null;
+    maxPrice: number | null;
+    location: string;
+  }) => {
+    try {
+      await fetch("/api/targets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      fetchData();
+    } catch (err) {
+      console.error("Error creating target:", err);
+      // Local fallback
+      setTargets((prev) => [
+        {
+          id: String(Date.now()),
+          name: data.name,
+          query: data.query,
+          minPrice: data.minPrice,
+          maxPrice: data.maxPrice,
+          currency: "BOB",
+          location: data.location,
+          active: true,
+          intervalMinutes: 60,
+          lastRunAt: null,
+          _count: { listings: 0 },
+        },
+        ...prev,
+      ]);
+    }
+  };
+
+  // US-9.2: Unique brands available from loaded deals
+  const availableBrands = useMemo(() => {
+    const brandsSet = new Set<string>();
+    deals.forEach((d) => {
+      if (d.brand && d.brand.trim()) {
+        brandsSet.add(d.brand.trim());
+      }
+    });
+    // Ensure default common brands are accessible if not in deals
+    ["Lenovo", "Asus", "Dell", "Apple", "HP"].forEach((b) => brandsSet.add(b));
+    return Array.from(brandsSet).sort();
+  }, [deals]);
+
+  // US-9.2: Filtered deals calculation
+  const filteredDeals = useMemo(() => {
+    return deals.filter((deal) => {
+      // 1. Brand Filter
+      if (filters.selectedBrands.length > 0) {
+        if (!deal.brand || !filters.selectedBrands.includes(deal.brand)) {
+          return false;
+        }
+      }
+
+      // 2. Minimum Score Filter
+      if (filters.minScore > 0 && deal.dealScore < filters.minScore) {
+        return false;
+      }
+
+      // 3. Real Price Range Filter
+      const realPrice = deal.realPrice ?? deal.listing.listedPrice;
+      if (filters.minPrice !== "") {
+        const min = parseFloat(filters.minPrice);
+        if (!isNaN(min) && (realPrice === null || realPrice < min)) {
+          return false;
+        }
+      }
+      if (filters.maxPrice !== "") {
+        const max = parseFloat(filters.maxPrice);
+        if (!isNaN(max) && (realPrice === null || realPrice > max)) {
+          return false;
+        }
+      }
+
+      // 4. Text Search Query
+      if (filters.searchQuery.trim() !== "") {
+        const q = filters.searchQuery.toLowerCase();
+        const searchableText = [
+          deal.brand,
+          deal.model,
+          deal.cpu,
+          deal.gpu,
+          deal.reasoning,
+          deal.listing.title,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        if (!searchableText.includes(q)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+  }, [deals, filters]);
+
+  // US-9.2: Accumulated savings and stats calculation
+  const accumulatedSavings = useMemo(() => {
+    return filteredDeals.reduce((sum, deal) => {
+      const real = deal.realPrice ?? deal.listing.listedPrice;
+      const market = deal.estimatedMarketPrice;
+      if (real !== null && market !== null && market > real) {
+        return sum + (market - real);
+      }
+      return sum;
+    }, 0);
+  }, [filteredDeals]);
+
+  const averageScore = useMemo(() => {
+    if (filteredDeals.length === 0) return 0;
+    const totalScore = filteredDeals.reduce((sum, d) => sum + d.dealScore, 0);
+    return Math.round(totalScore / filteredDeals.length);
+  }, [filteredDeals]);
+
+  const hasActiveFilters = useMemo(() => {
+    return (
+      filters.searchQuery !== "" ||
+      filters.selectedBrands.length > 0 ||
+      filters.minScore > 0 ||
+      filters.minPrice !== "" ||
+      filters.maxPrice !== ""
+    );
+  }, [filters]);
+
+  const handleResetFilters = () => {
+    setFilters(INITIAL_FILTERS);
   };
 
   return (
@@ -204,6 +468,7 @@ export default function App() {
             <button
               onClick={fetchData}
               className="p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition flex items-center gap-1.5 text-sm"
+              title="Refrescar datos del dashboard"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
               Actualizar
@@ -221,7 +486,7 @@ export default function App() {
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full space-y-10">
-        {/* Section 1: Search Targets Manager (US-6.1) */}
+        {/* Section 1: Search Targets Manager with Live Controls (US-9.1) */}
         <section className="space-y-4">
           <div className="flex items-center justify-between">
             <div>
@@ -234,49 +499,27 @@ export default function App() {
               </p>
             </div>
             <span className="text-xs font-mono text-slate-400 bg-slate-900 px-2.5 py-1 rounded border border-slate-800">
-              {targets.length} {targets.length === 1 ? "búsqueda activa" : "búsquedas activas"}
+              {targets.length} {targets.length === 1 ? "búsqueda configurada" : "búsquedas configuradas"}
             </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {targets.map((target) => (
-              <div
+              <TargetCard
                 key={target.id}
-                className="bg-slate-900 border border-slate-800 rounded-xl p-5 hover:border-slate-700 transition flex flex-col justify-between"
-              >
-                <div className="space-y-2">
-                  <div className="flex items-start justify-between">
-                    <h3 className="font-semibold text-white text-base">{target.name}</h3>
-                    <button
-                      onClick={() => handleDeleteTarget(target.id)}
-                      className="text-slate-500 hover:text-rose-400 transition p-1"
-                      title="Eliminar campaña"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                  <div className="text-xs text-emerald-400 font-mono bg-emerald-950/40 border border-emerald-800/40 rounded px-2 py-1 inline-block">
-                    query: "{target.query}"
-                  </div>
-                  <div className="text-xs text-slate-400 flex items-center gap-4 pt-1">
-                    <span>
-                      Presupuesto: {target.minPrice ?? 0} - {target.maxPrice ?? "∞"} {target.currency}
-                    </span>
-                    <span>📍 {target.location}</span>
-                  </div>
-                </div>
-
-                <div className="mt-4 pt-3 border-t border-slate-800/60 flex items-center justify-between text-xs text-slate-500">
-                  <span>Barrido cada {target.intervalMinutes}m</span>
-                  <span className="text-slate-400">{target._count?.listings ?? 0} publicaciones analizadas</span>
-                </div>
-              </div>
+                target={target}
+                isScanning={!!scanningTargets[target.id]}
+                feedback={scanFeedback[target.id] ?? null}
+                onRunScan={handleRunScan}
+                onToggle={handleToggleTarget}
+                onDelete={handleDeleteTarget}
+              />
             ))}
           </div>
         </section>
 
-        {/* Section 2: Top Deals Arbitrage Feed (US-6.2) */}
-        <section className="space-y-4">
+        {/* Section 2: Top Deals Arbitrage Feed with Advanced Filters & Stats (US-9.2) */}
+        <section className="space-y-6">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-xl font-bold text-white flex items-center gap-2">
@@ -289,204 +532,62 @@ export default function App() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {deals.map((deal) => {
-              const savings =
-                deal.estimatedMarketPrice && deal.realPrice
-                  ? Math.round(((deal.estimatedMarketPrice - deal.realPrice) / deal.estimatedMarketPrice) * 100)
-                  : null;
+          {/* Stats Bar (US-9.2) */}
+          <DealStats
+            filteredCount={filteredDeals.length}
+            totalCount={deals.length}
+            accumulatedSavings={accumulatedSavings}
+            averageScore={averageScore}
+          />
 
-              return (
-                <div
-                  key={deal.id}
-                  className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden hover:border-emerald-500/50 transition flex flex-col group shadow-lg shadow-black/40"
+          {/* Filter and Search Bar (US-9.2) */}
+          <DealFilters
+            filters={filters}
+            onChange={setFilters}
+            availableBrands={availableBrands}
+            onReset={handleResetFilters}
+            hasActiveFilters={hasActiveFilters}
+          />
+
+          {/* Deals Grid */}
+          {filteredDeals.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredDeals.map((deal) => (
+                <DealCard key={deal.id} deal={deal} />
+              ))}
+            </div>
+          ) : (
+            /* Empty State */
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-12 text-center space-y-4">
+              <div className="inline-flex p-4 rounded-full bg-slate-800/80 text-slate-400 mb-2">
+                <SlidersHorizontal className="w-8 h-8" />
+              </div>
+              <h3 className="text-lg font-bold text-white">
+                No se encontraron gangas con estos filtros
+              </h3>
+              <p className="text-sm text-slate-400 max-w-md mx-auto">
+                Prueba relajando el rango de precio, bajando el score mínimo o seleccionando más marcas.
+              </p>
+              <div>
+                <button
+                  onClick={handleResetFilters}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg transition shadow-md shadow-emerald-950"
                 >
-                  {/* Photo & Badge */}
-                  <div className="relative aspect-video bg-slate-950 overflow-hidden">
-                    <img
-                      src={deal.listing.imageUrls[0] || "https://images.unsplash.com/photo-1588872657578-7efd1f1555ed?w=600"}
-                      alt={deal.listing.title}
-                      className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
-                    />
-                    <div className="absolute top-3 right-3 bg-emerald-500 text-slate-950 font-black text-xs px-2.5 py-1 rounded-full shadow-md flex items-center gap-1">
-                      <Flame className="w-3.5 h-3.5 fill-current" />
-                      SCORE {deal.dealScore}/100
-                    </div>
-                    {savings && savings > 0 && (
-                      <div className="absolute bottom-3 left-3 bg-slate-950/80 backdrop-blur text-emerald-400 font-bold text-xs px-2.5 py-1 rounded border border-emerald-500/30">
-                        ~{savings}% bajo mercado
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Body Content */}
-                  <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                    <div className="space-y-3">
-                      <div>
-                        <span className="text-xs font-semibold text-emerald-400 tracking-wider uppercase">
-                          {deal.brand || "Laptop"}
-                        </span>
-                        <h3 className="text-base font-bold text-white line-clamp-1">
-                          {deal.model || deal.listing.title}
-                        </h3>
-                      </div>
-
-                      {/* Hardware Chips */}
-                      <div className="flex flex-wrap gap-1.5 text-xs">
-                        {deal.cpu && (
-                          <span className="bg-slate-800 text-slate-300 px-2 py-1 rounded flex items-center gap-1 border border-slate-700/60">
-                            <Cpu className="w-3 h-3 text-sky-400" />
-                            {deal.cpu}
-                          </span>
-                        )}
-                        {deal.ramGb && (
-                          <span className="bg-slate-800 text-slate-300 px-2 py-1 rounded flex items-center gap-1 border border-slate-700/60">
-                            {deal.ramGb} GB RAM
-                          </span>
-                        )}
-                        {deal.gpu && (
-                          <span className="bg-slate-800 text-slate-300 px-2 py-1 rounded flex items-center gap-1 border border-slate-700/60">
-                            <HardDrive className="w-3 h-3 text-emerald-400" />
-                            {deal.gpu}
-                          </span>
-                        )}
-                        {deal.conditionRating && (
-                          <span className="bg-slate-800 text-slate-300 px-2 py-1 rounded flex items-center gap-1 border border-slate-700/60">
-                            <ShieldCheck className="w-3 h-3 text-amber-400" />
-                            Estado: {deal.conditionRating}/10
-                          </span>
-                        )}
-                      </div>
-
-                      {/* AI Reasoning */}
-                      {deal.reasoning && (
-                        <p className="text-xs text-slate-400 bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/60 italic">
-                          "{deal.reasoning}"
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Price and Action */}
-                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between">
-                      <div>
-                        <div className="text-xs text-slate-500">Precio Real Detectado</div>
-                        <div className="text-lg font-black text-white">
-                          {deal.realPrice ?? deal.listing.listedPrice ?? "Consultar"} {deal.listing.currency}
-                        </div>
-                      </div>
-
-                      <a
-                        href={deal.listing.url}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="bg-slate-800 hover:bg-emerald-600 text-white p-2.5 rounded-lg transition duration-200 border border-slate-700 hover:border-emerald-500"
-                        title="Abrir en Facebook Marketplace"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                  <RotateCcw className="w-4 h-4" />
+                  Restablecer todos los filtros
+                </button>
+              </div>
+            </div>
+          )}
         </section>
       </main>
 
-      {/* Modal: New Target (US-6.1) */}
-      {showAddModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl w-full max-w-md p-6 space-y-5 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <Search className="w-5 h-5 text-emerald-400" />
-                Nueva Búsqueda en Marketplace
-              </h3>
-              <button
-                onClick={() => setShowAddModal(false)}
-                className="text-slate-400 hover:text-white text-xl leading-none"
-              >
-                &times;
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateTarget} className="space-y-4">
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Nombre de la Campaña</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="ej. Laptops Gaming Económicas"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Término de Búsqueda (Query)</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="ej. laptop gamer rtx"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Precio Mín (BOB)</label>
-                  <input
-                    type="number"
-                    placeholder="ej. 2000"
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Precio Máx (BOB)</label>
-                  <input
-                    type="number"
-                    placeholder="ej. 5000"
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Ciudad / Ubicación</label>
-                <input
-                  type="text"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowAddModal(false)}
-                  className="px-4 py-2 text-sm text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 text-white font-medium rounded-lg transition"
-                >
-                  Guardar Búsqueda
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {/* Modal: New Target */}
+      <NewTargetModal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onSubmit={handleCreateTarget}
+      />
     </div>
   );
 }

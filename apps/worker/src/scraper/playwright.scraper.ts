@@ -24,6 +24,10 @@ export class PlaywrightMarketplaceScraper {
   }
 
   async init(headless: boolean = true): Promise<void> {
+    if (this.browser) {
+      return;
+    }
+
     this.browser = await chromium.launch({
       headless,
       args: [
@@ -244,6 +248,8 @@ export class PlaywrightMarketplaceScraper {
   async close(): Promise<void> {
     if (this.browser) {
       await this.browser.close();
+      this.browser = null;
+      this.context = null;
     }
   }
 }
