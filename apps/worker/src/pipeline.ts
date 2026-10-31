@@ -333,6 +333,46 @@ export class WorkerPipeline {
   }
 
   /**
+   * Initializes the scraper browser context.
+   */
+  async init(headless: boolean = true): Promise<void> {
+    if (this.scraper?.init) {
+      await this.scraper.init(headless);
+    }
+  }
+
+  /**
+   * Closes the scraper browser and releases resources.
+   */
+  async close(): Promise<void> {
+    if (this.scraper?.close) {
+      await this.scraper.close();
+    }
+  }
+
+  /**
+   * Runs the pipeline on-demand for a single SearchTarget (by ID or model).
+   */
+  async runTarget(targetOrId: string | SearchTarget): Promise<TargetProcessSummary> {
+    const target =
+      typeof targetOrId === "string"
+        ? await this.prisma.searchTarget.findUnique({ where: { id: targetOrId } })
+        : targetOrId;
+
+    if (!target) {
+      throw new Error(`Target not found: ${typeof targetOrId === "string" ? targetOrId : targetOrId?.id}`);
+    }
+
+    const headless = process.env.HEADLESS !== "false";
+    await this.init(headless);
+    try {
+      return await this.processTarget(target);
+    } finally {
+      await this.close();
+    }
+  }
+
+  /**
    * Main entry point to run worker cycle across all active search targets
    */
   async run(): Promise<void> {

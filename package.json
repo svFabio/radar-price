@@ -9,6 +9,7 @@
     "lint": "echo 'Linting passed: no issues'",
     "test": "pnpm --filter @radar/worker test",
     "dev:worker": "pnpm --filter @radar/worker dev",
+    "dev:scheduler": "pnpm --filter @radar/worker dev:scheduler",
     "dev:login": "pnpm --filter @radar/worker login",
     "dev:api": "pnpm --filter @radar/api dev",
     "dev:web": "pnpm --filter @radar/web dev",
