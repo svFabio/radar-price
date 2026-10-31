@@ -163,6 +163,8 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
   // Get Top Deals
   app.get("/api/deals/top", async (req) => {
     const { limit = "10" } = req.query as { limit?: string };
+    const parsedLimit = parseInt(limit, 10);
+    const safeLimit = isNaN(parsedLimit) || parsedLimit <= 0 ? 10 : Math.min(parsedLimit, 50);
 
     const topEvaluations = await prisma.evaluation.findMany({
       where: {
@@ -171,7 +173,7 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
       orderBy: {
         dealScore: "desc",
       },
-      take: parseInt(limit, 10),
+      take: safeLimit,
       include: {
         listing: true,
       },

@@ -346,4 +346,75 @@ describe("API Control and Trigger Endpoints (US-8.2)", () => {
       assert.equal(stats.totalAlerts, 19);
     });
   });
+
+  describe("5. GET /api/deals/top", () => {
+    test("handles invalid non-numeric limit safely by falling back to default 10", async () => {
+      let capturedArgs: any;
+      const mockPrisma = {
+        evaluation: {
+          findMany: async (args: any) => {
+            capturedArgs = args;
+            if (Number.isNaN(args?.take)) {
+              throw new Error("PrismaClientValidationError: take must not be NaN");
+            }
+            return [{ id: "deal-1", dealScore: 95 }];
+          },
+        },
+      };
+
+      const app = buildApp({ prisma: mockPrisma });
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/deals/top?limit=invalid_number",
+      });
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(capturedArgs.take, 10);
+    });
+
+    test("clamps negative or zero limit to default 10", async () => {
+      let capturedArgs: any;
+      const mockPrisma = {
+        evaluation: {
+          findMany: async (args: any) => {
+            capturedArgs = args;
+            return [];
+          },
+        },
+      };
+
+      const app = buildApp({ prisma: mockPrisma });
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/deals/top?limit=-5",
+      });
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(capturedArgs.take, 10);
+    });
+
+    test("caps excessive limit to maximum of 50", async () => {
+      let capturedArgs: any;
+      const mockPrisma = {
+        evaluation: {
+          findMany: async (args: any) => {
+            capturedArgs = args;
+            return [];
+          },
+        },
+      };
+
+      const app = buildApp({ prisma: mockPrisma });
+
+      const res = await app.inject({
+        method: "GET",
+        url: "/api/deals/top?limit=250",
+      });
+
+      assert.equal(res.statusCode, 200);
+      assert.equal(capturedArgs.take, 50);
+    });
+  });
 });
