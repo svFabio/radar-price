@@ -5,6 +5,7 @@ export interface RawScrapedListing {
   currency: string;
   url: string;
   imageUrls: string[];
+  imageHashes?: string[];
   location?: string | null;
 }
 

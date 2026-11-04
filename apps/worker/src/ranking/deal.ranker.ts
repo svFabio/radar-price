@@ -1,6 +1,7 @@
 import { DealNotificationPayload } from "@radar/notifications";
 import { RawScrapedListing } from "../analyzer/heuristic.filter.js";
 import { EvaluatedSpecs } from "../analyzer/vision.analyzer.js";
+import { ImageHasher } from "../analyzer/image.hash.js";
 
 export interface CandidateDeal {
   listing: RawScrapedListing;
@@ -10,6 +11,7 @@ export interface CandidateDeal {
 export class DealRanker {
   /**
    * Sorts candidate deals by DealScore, clusters similar models together,
+   * detects duplicate items via visual image hashing (dHash),
    * and returns the Top N most advantageous deals.
    */
   static selectTopDeals(candidates: CandidateDeal[], topCount: number = 5): DealNotificationPayload[] {
@@ -19,8 +21,9 @@ export class DealRanker {
     // 2. Sort descending by deal score
     qualified.sort((a, b) => b.evaluation.dealScore - a.evaluation.dealScore);
 
-    // 3. Cluster and deduplicate similar hardware
+    // 3. Cluster and deduplicate similar hardware and identical images
     const seenClusters = new Set<string>();
+    const seenImageHashes: string[][] = [];
     const topDeals: DealNotificationPayload[] = [];
 
     for (const c of qualified) {
@@ -31,7 +34,21 @@ export class DealRanker {
         // Already picked the best deal in this cluster/tier
         continue;
       }
+
+      // Check perceptual visual duplication across photos
+      if (c.listing.imageHashes && c.listing.imageHashes.length > 0) {
+        const isVisualDuplicate = seenImageHashes.some((hashes) =>
+          ImageHasher.hasMatchingImage(c.listing.imageHashes!, hashes, 10)
+        );
+        if (isVisualDuplicate) {
+          continue;
+        }
+      }
+
       seenClusters.add(clusterKey);
+      if (c.listing.imageHashes && c.listing.imageHashes.length > 0) {
+        seenImageHashes.push(c.listing.imageHashes);
+      }
 
       topDeals.push({
         dealTitle: `${c.evaluation.brand || ""} ${c.evaluation.model || c.listing.title}`.trim(),
