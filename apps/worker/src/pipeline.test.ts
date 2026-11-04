@@ -701,4 +701,115 @@ describe("WorkerPipeline - Arbitrator Requirements (US-5.1)", () => {
       );
     });
   });
+
+  describe("6. Multi-channel Notification Dispatcher (Telegram + WhatsApp)", () => {
+    test("dispatches deal alerts to both Telegram and WhatsApp when configured", async () => {
+      const mockTarget: any = {
+        id: "target-multichannel",
+        name: "Laptops Gamer Cochabamba",
+        query: "laptop gamer",
+        location: "Cochabamba",
+        minPrice: 1500,
+        maxPrice: 6000,
+        currency: "BOB",
+      };
+
+      const scrapedRawListings: RawScrapedListing[] = [
+        {
+          fbItemId: "fb-item-multi",
+          title: "Lenovo Legion 5",
+          listedPrice: 3800,
+          currency: "BOB",
+          url: "https://fb.com/item-multi",
+          imageUrls: [],
+        },
+      ];
+
+      const recordedAlerts: Array<{ channel: string; listingId: string }> = [];
+
+      const mockPrisma = {
+        searchTarget: {
+          update: async () => mockTarget,
+        },
+        listing: {
+          findUnique: async () => null,
+          upsert: async () => ({
+            id: "listing-multi-id",
+            fbItemId: "fb-item-multi",
+            title: "Lenovo Legion 5",
+            listedPrice: 3800,
+            currency: "BOB",
+            evaluation: null,
+          }),
+          update: async () => {},
+        },
+        evaluation: {
+          findUnique: async () => null,
+          create: async () => {},
+        },
+        alert: {
+          findFirst: async () => null, // No existing alert
+          create: async ({ data }: any) => {
+            recordedAlerts.push({ channel: data.channel, listingId: data.listingId });
+          },
+        },
+      };
+
+      let telegramSent = false;
+      let whatsappSent = false;
+
+      const mockTelegram = {
+        channelName: "telegram",
+        sendDailyDigest: async () => {
+          telegramSent = true;
+          return { success: true };
+        },
+      };
+
+      const mockWhatsApp = {
+        channelName: "whatsapp",
+        sendDailyDigest: async () => {
+          whatsappSent = true;
+          return { success: true };
+        },
+      };
+
+      const mockScraper = {
+        init: async () => {},
+        scrapeSearch: async () => scrapedRawListings,
+        close: async () => {},
+      };
+
+      const mockVision = {
+        analyze: async () => ({
+          brand: "Lenovo",
+          model: "Legion 5",
+          cpu: "Ryzen 7 5800H",
+          ramGb: 16,
+          gpu: "RTX 3060",
+          realPrice: 3800,
+          isDeal: true,
+          dealScore: 92,
+          reasoning: "Excellent deal for Legion 5",
+        }),
+      };
+
+      const pipeline = new WorkerPipeline({
+        prisma: mockPrisma,
+        scraper: mockScraper,
+        vision: mockVision,
+        telegram: mockTelegram,
+        whatsapp: mockWhatsApp,
+      });
+
+      const summary = await pipeline.processTarget(mockTarget);
+
+      assert.equal(telegramSent, true, "Telegram notification should be dispatched");
+      assert.equal(whatsappSent, true, "WhatsApp notification should be dispatched");
+      assert.equal(summary.dispatchedAlertsCount, 2, "Dispatched alerts count should cover both channels");
+      assert.equal(recordedAlerts.length, 2);
+      assert.ok(recordedAlerts.some((a) => a.channel === "telegram"));
+      assert.ok(recordedAlerts.some((a) => a.channel === "whatsapp"));
+    });
+  });
 });

@@ -3,17 +3,21 @@ import { PlaywrightMarketplaceScraper } from "./scraper/playwright.scraper.js";
 import { HeuristicFilter, RawScrapedListing } from "./analyzer/heuristic.filter.js";
 import { VisionAnalyzer, EvaluatedSpecs } from "./analyzer/vision.analyzer.js";
 import { DealRanker, CandidateDeal } from "./ranking/deal.ranker.js";
-import { TelegramNotificationProvider, NotificationProvider } from "@radar/notifications";
+import { TelegramNotificationProvider, WhatsAppNotificationProvider, NotificationProvider } from "@radar/notifications";
 
 export interface CandidateWithDb extends CandidateDeal {
   listingId: string;
 }
 
+export type ChannelProvider = Pick<NotificationProvider, "sendDailyDigest"> & { channelName?: string };
+
 export interface PipelineDependencies {
   prisma?: any;
   scraper?: Pick<PlaywrightMarketplaceScraper, "init" | "scrapeSearch" | "close">;
   vision?: Pick<VisionAnalyzer, "analyze">;
-  telegram?: Pick<NotificationProvider, "sendDailyDigest">;
+  telegram?: ChannelProvider;
+  whatsapp?: ChannelProvider;
+  providers?: ChannelProvider[];
 }
 
 export interface TargetProcessSummary {
@@ -28,18 +32,53 @@ export class WorkerPipeline {
   private prisma: any;
   private scraper: Pick<PlaywrightMarketplaceScraper, "init" | "scrapeSearch" | "close">;
   private vision: Pick<VisionAnalyzer, "analyze">;
-  private telegram: Pick<NotificationProvider, "sendDailyDigest">;
+  private providers: Array<{ sendDailyDigest: (deals: any[]) => Promise<{ success: boolean; error?: string }>; channelName: string }>;
 
   constructor(deps: PipelineDependencies = {}) {
     this.prisma = deps.prisma ?? defaultPrisma;
     this.scraper = deps.scraper ?? new PlaywrightMarketplaceScraper();
     this.vision = deps.vision ?? new VisionAnalyzer();
-    this.telegram =
-      deps.telegram ??
-      new TelegramNotificationProvider({
-        botToken: process.env.TELEGRAM_BOT_TOKEN || "",
-        chatId: process.env.TELEGRAM_CHAT_ID || "",
+
+    if (deps.providers && deps.providers.length > 0) {
+      this.providers = deps.providers.map((p) => ({
+        sendDailyDigest: p.sendDailyDigest.bind(p),
+        channelName: p.channelName || "notification",
+      }));
+    } else {
+      const activeProviders: Array<{ sendDailyDigest: (deals: any[]) => Promise<{ success: boolean; error?: string }>; channelName: string }> = [];
+
+      // Telegram provider
+      const telegramProvider =
+        deps.telegram ??
+        new TelegramNotificationProvider({
+          botToken: process.env.TELEGRAM_BOT_TOKEN || "",
+          chatId: process.env.TELEGRAM_CHAT_ID || "",
+        });
+      activeProviders.push({
+        sendDailyDigest: telegramProvider.sendDailyDigest.bind(telegramProvider),
+        channelName: telegramProvider.channelName || "telegram",
       });
+
+      // WhatsApp provider (if injected or env variables configured)
+      if (deps.whatsapp) {
+        activeProviders.push({
+          sendDailyDigest: deps.whatsapp.sendDailyDigest.bind(deps.whatsapp),
+          channelName: deps.whatsapp.channelName || "whatsapp",
+        });
+      } else if (process.env.WHATSAPP_API_URL && (process.env.WHATSAPP_PHONE || process.env.WHATSAPP_RECIPIENT_PHONE)) {
+        const whatsapp = new WhatsAppNotificationProvider({
+          apiUrl: process.env.WHATSAPP_API_URL,
+          apiKey: process.env.WHATSAPP_API_KEY,
+          recipientPhone: (process.env.WHATSAPP_PHONE || process.env.WHATSAPP_RECIPIENT_PHONE)!,
+        });
+        activeProviders.push({
+          sendDailyDigest: whatsapp.sendDailyDigest.bind(whatsapp),
+          channelName: whatsapp.channelName,
+        });
+      }
+
+      this.providers = activeProviders;
+    }
   }
 
   /**
@@ -257,65 +296,66 @@ export class WorkerPipeline {
       });
     }
 
-    // 4. Clustering & Top 5 Selection with Alert Deduplication
-    console.log(`[Pipeline] Step 4: Clustering & Ranking Top Deals with Alert Deduplication...`);
-    const unalertedCandidates: CandidateWithDb[] = [];
-
-    for (const candidate of candidates) {
-      // 4. Deduplication: verify if alert already exists for this listingId and channel 'telegram'
-      const existingAlert = await this.prisma.alert.findFirst({
-        where: {
-          listingId: candidate.listingId,
-          channel: "telegram",
-        },
-      });
-
-      if (existingAlert) {
-        console.log(`  ↪ [Deduplication] Listing "${candidate.listing.title}" (ID: ${candidate.listingId}) already alerted on telegram. Skipping.`);
-      } else {
-        unalertedCandidates.push(candidate);
-      }
-    }
-
-    const topDeals = DealRanker.selectTopDeals(unalertedCandidates, 5);
-    console.log(`[Pipeline] Selected ${topDeals.length} Top Deal(s) to dispatch.`);
-
-    // 5. Send Alert / Digest & Persist Alert Record
+    // 4 & 5. Dispatch alerts across configured channels with deduplication
     let dispatchedAlertsCount = 0;
-    if (topDeals.length > 0) {
-      console.log(`[Pipeline] Step 5: Dispatching notification to Telegram...`);
-      const digestResult = await this.telegram.sendDailyDigest(topDeals);
-      if (digestResult.success) {
-        console.log("✅ Successfully sent Telegram Top Deals Digest!");
-        for (const deal of topDeals) {
-          const matchingCandidate = unalertedCandidates.find((c) => c.listing.url === deal.url);
-          if (matchingCandidate) {
-            await this.prisma.alert.create({
-              data: {
-                listingId: matchingCandidate.listingId,
-                channel: "telegram",
-                status: "sent",
-                metadata: {
-                  dealScore: deal.dealScore,
-                  realPrice: deal.realPrice ?? deal.listedPrice,
-                  currency: deal.currency,
-                  title: deal.dealTitle,
-                },
-              },
-            });
 
-            await this.prisma.listing.update({
-              where: { id: matchingCandidate.listingId },
-              data: { status: "ALERTED" },
-            });
-            dispatchedAlertsCount++;
+    for (const provider of this.providers) {
+      console.log(`[Pipeline] Step 4: Clustering & Ranking Top Deals for channel "${provider.channelName}"...`);
+      const unalertedCandidates: CandidateWithDb[] = [];
+
+      for (const candidate of candidates) {
+        const existingAlert = await this.prisma.alert.findFirst({
+          where: {
+            listingId: candidate.listingId,
+            channel: provider.channelName,
+          },
+        });
+
+        if (existingAlert) {
+          console.log(`  ↪ [Deduplication] Listing "${candidate.listing.title}" (ID: ${candidate.listingId}) already alerted on ${provider.channelName}. Skipping.`);
+        } else {
+          unalertedCandidates.push(candidate);
+        }
+      }
+
+      const topDeals = DealRanker.selectTopDeals(unalertedCandidates, 5);
+      console.log(`[Pipeline] Selected ${topDeals.length} Top Deal(s) for ${provider.channelName}.`);
+
+      if (topDeals.length > 0) {
+        console.log(`[Pipeline] Step 5: Dispatching notification to ${provider.channelName}...`);
+        const digestResult = await provider.sendDailyDigest(topDeals);
+        if (digestResult.success) {
+          console.log(`✅ Successfully sent ${provider.channelName} Top Deals Digest!`);
+          for (const deal of topDeals) {
+            const matchingCandidate = unalertedCandidates.find((c) => c.listing.url === deal.url);
+            if (matchingCandidate) {
+              await this.prisma.alert.create({
+                data: {
+                  listingId: matchingCandidate.listingId,
+                  channel: provider.channelName,
+                  status: "sent",
+                  metadata: {
+                    dealScore: deal.dealScore,
+                    realPrice: deal.realPrice ?? deal.listedPrice,
+                    currency: deal.currency,
+                    title: deal.dealTitle,
+                  },
+                },
+              });
+
+              await this.prisma.listing.update({
+                where: { id: matchingCandidate.listingId },
+                data: { status: "ALERTED" },
+              });
+              dispatchedAlertsCount++;
+            }
           }
+        } else {
+          console.log(`⚠️ ${provider.channelName} notification skipped/failed: ${digestResult.error}`);
         }
       } else {
-        console.log(`⚠️ Telegram notification skipped/failed: ${digestResult.error}`);
+        console.log(`ℹ️ No outstanding new deals met the threshold for ${provider.channelName} on this run.`);
       }
-    } else {
-      console.log("ℹ️ No outstanding new deals met the threshold on this run.");
     }
 
     await this.prisma.searchTarget.update({
