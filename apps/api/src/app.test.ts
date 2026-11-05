@@ -270,6 +270,40 @@ describe("API Control and Trigger Endpoints (US-8.2)", () => {
       assert.equal(pipelineStarted, true);
     });
 
+    test("enqueues job to BullMQ queue when queue option is provided and async=true", async () => {
+      const target = { id: "target-queued", name: "Queue Target", active: true };
+      let enqueuedId = "";
+      let enqueuedSource = "";
+
+      const mockPrisma = {
+        searchTarget: {
+          findUnique: async () => target,
+        },
+      };
+
+      const mockQueue = {
+        addTargetJob: async (targetId: string, source?: any) => {
+          enqueuedId = targetId;
+          enqueuedSource = source;
+          return { id: "job-target-queued" };
+        },
+      };
+
+      const app = buildApp({
+        prisma: mockPrisma,
+        queue: mockQueue,
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/targets/target-queued/run?async=true",
+      });
+
+      assert.equal(res.statusCode, 202);
+      assert.equal(enqueuedId, "target-queued");
+      assert.equal(enqueuedSource, "api");
+    });
+
     test("returns 500 when pipeline execution throws an error", async () => {
       const target = { id: "target-error", name: "Failing Target", active: true };
 

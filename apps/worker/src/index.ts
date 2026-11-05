@@ -4,6 +4,7 @@ import { WorkerPipeline } from "./pipeline.js";
 
 export * from "./pipeline.js";
 export * from "./scheduler.js";
+export * from "./queue/search.queue.js";
 
 async function main() {
   const pipeline = new WorkerPipeline();

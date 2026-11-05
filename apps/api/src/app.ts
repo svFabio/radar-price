@@ -7,6 +7,7 @@ export interface AppOptions {
   pipeline?: Pick<WorkerPipeline, "runTarget">;
   logger?: any;
   apiKey?: string;
+  queue?: { addTargetJob: (targetId: string, source?: any) => Promise<any> };
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
@@ -132,14 +133,18 @@ export function buildApp(options: AppOptions = {}): FastifyInstance {
     const isAsync = query?.async === "true" || body?.async === true;
 
     if (isAsync) {
-      // Run background execution
-      (async () => {
-        try {
-          await pipeline.runTarget(target);
-        } catch (err) {
-          app.log.error(err, `Error executing manual background sweep for target ${id}`);
-        }
-      })();
+      if (options.queue?.addTargetJob) {
+        await options.queue.addTargetJob(id, "api");
+      } else {
+        // Run background execution
+        (async () => {
+          try {
+            await pipeline.runTarget(target);
+          } catch (err) {
+            app.log.error(err, `Error executing manual background sweep for target ${id}`);
+          }
+        })();
+      }
 
       return reply.status(202).send({
         success: true,
