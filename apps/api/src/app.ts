@@ -6,15 +6,37 @@ export interface AppOptions {
   prisma?: any;
   pipeline?: Pick<WorkerPipeline, "runTarget">;
   logger?: any;
+  apiKey?: string;
 }
 
 export function buildApp(options: AppOptions = {}): FastifyInstance {
   const prisma = options.prisma ?? defaultPrisma;
   const pipeline = options.pipeline ?? new WorkerPipeline({ prisma });
+  const apiKey = options.apiKey ?? process.env.API_SECRET_KEY;
 
   const app = Fastify({
     logger: options.logger ?? (process.env.NODE_ENV === "test" ? false : true),
   });
+
+  // API Key Authentication Middleware (US-8.3)
+  if (apiKey) {
+    app.addHook("preHandler", async (req, reply) => {
+      const pathname = req.url.split("?")[0];
+      const isPublic =
+        pathname === "/health" ||
+        pathname.startsWith("/api/deals/top") ||
+        (req.method === "GET" && (pathname === "/api/targets" || pathname === "/api/stats"));
+
+      if (isPublic) return;
+
+      const rawAuth = req.headers["x-api-key"] || req.headers["authorization"];
+      const providedKey = typeof rawAuth === "string" ? rawAuth.replace(/^Bearer\s+/i, "").trim() : "";
+
+      if (!providedKey || providedKey !== apiKey) {
+        return reply.status(401).send({ error: "Unauthorized: Invalid or missing API key" });
+      }
+    });
+  }
 
   // Health check
   app.get("/health", async () => {

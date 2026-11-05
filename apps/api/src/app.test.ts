@@ -417,4 +417,111 @@ describe("API Control and Trigger Endpoints (US-8.2)", () => {
       assert.equal(capturedArgs.take, 50);
     });
   });
+
+  describe("6. API Key Authentication Middleware", () => {
+    const SECRET_KEY = "super-secret-radar-key";
+
+    test("allows public endpoints without API key", async () => {
+      const app = buildApp({
+        apiKey: SECRET_KEY,
+        prisma: {
+          searchTarget: { count: async () => 2 },
+          listing: { count: async () => 10 },
+          evaluation: { count: async () => 5, findMany: async () => [] },
+          alert: { count: async () => 1 },
+        },
+      });
+
+      const resHealth = await app.inject({ method: "GET", url: "/health" });
+      assert.equal(resHealth.statusCode, 200);
+
+      const resStats = await app.inject({ method: "GET", url: "/api/stats" });
+      assert.equal(resStats.statusCode, 200);
+
+      const resDeals = await app.inject({ method: "GET", url: "/api/deals/top" });
+      assert.equal(resDeals.statusCode, 200);
+    });
+
+    test("blocks protected mutations with 401 when API key is missing", async () => {
+      const app = buildApp({
+        apiKey: SECRET_KEY,
+        prisma: {},
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/targets",
+        payload: { name: "Protected Target", query: "laptop" },
+      });
+
+      assert.equal(res.statusCode, 401);
+      assert.equal(res.json().error, "Unauthorized: Invalid or missing API key");
+    });
+
+    test("blocks protected mutations with 401 when API key is invalid", async () => {
+      const app = buildApp({
+        apiKey: SECRET_KEY,
+        prisma: {},
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/targets",
+        headers: { "x-api-key": "wrong-key" },
+        payload: { name: "Protected Target", query: "laptop" },
+      });
+
+      assert.equal(res.statusCode, 401);
+    });
+
+    test("allows protected mutations when valid x-api-key header is provided", async () => {
+      let created = false;
+      const app = buildApp({
+        apiKey: SECRET_KEY,
+        prisma: {
+          searchTarget: {
+            create: async () => {
+              created = true;
+              return { id: "target-auth-1", name: "Authed", query: "laptop" };
+            },
+          },
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/targets",
+        headers: { "x-api-key": SECRET_KEY },
+        payload: { name: "Authed", query: "laptop" },
+      });
+
+      assert.equal(res.statusCode, 201);
+      assert.equal(created, true);
+    });
+
+    test("allows protected mutations when valid Authorization Bearer header is provided", async () => {
+      let created = false;
+      const app = buildApp({
+        apiKey: SECRET_KEY,
+        prisma: {
+          searchTarget: {
+            create: async () => {
+              created = true;
+              return { id: "target-auth-2", name: "Authed Bearer", query: "laptop" };
+            },
+          },
+        },
+      });
+
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/targets",
+        headers: { authorization: `Bearer ${SECRET_KEY}` },
+        payload: { name: "Authed Bearer", query: "laptop" },
+      });
+
+      assert.equal(res.statusCode, 201);
+      assert.equal(created, true);
+    });
+  });
 });
